@@ -1,68 +1,75 @@
 import os
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, ContextTypes, JobQueue
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, JobQueue
 )
-from deal_fetcher import fetch_trending_deals
-from utils import format_deal_message, is_duplicate, save_deal_to_db
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
+from utils import send_welcome_message, is_admin
+from deal_fetcher import fetch_and_post_deals
+from server import start_health_check
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 app = Application.builder().token(TELEGRAM_TOKEN).build()
+job_queue: JobQueue = app.job_queue
 
-# === COMMAND HANDLERS ===
-
+# START Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I'm your deal bot. Stay tuned for trending offers!")
+    await send_welcome_message(update, context)
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Use /start to begin. I’ll post deals automatically.")
+# Admin command placeholder
+async def setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update, ADMIN_ID):
+        await update.message.reply_text("Access denied.")
+        return
 
-# === DEAL POSTING JOB ===
+    keyboard = [
+        [InlineKeyboardButton("Clothes", callback_data='category_clothes')],
+        [InlineKeyboardButton("Accessories", callback_data='category_accessories')],
+        [InlineKeyboardButton("Electronics", callback_data='category_electronics')],
+    ]
+    await update.message.reply_text("Choose a category:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def post_deals(context: ContextTypes.DEFAULT_TYPE):
-    deals = fetch_trending_deals()
-    for deal in deals:
-        if not is_duplicate(deal['url']):
-            save_deal_to_db(deal['url'])
-            message = format_deal_message(deal)
-            await context.bot.send_photo(
-                chat_id=CHANNEL_ID,
-                photo=deal["image"],
-                caption=message,
-                parse_mode="Markdown"
-            )
+# Callback Handler for Categories & Discounts
+async def handle_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-# === HEALTH CHECK SERVER ===
+    category = query.data.replace("category_", "")
+    keyboard = [
+        [InlineKeyboardButton("25% OFF", callback_data=f"discount_25_{category}")],
+        [InlineKeyboardButton("50% OFF", callback_data=f"discount_50_{category}")],
+    ]
+    await query.edit_message_text(
+        text=f"Selected Category: *{category.title()}*. Now pick a discount:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/8080':
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Bot is running.")
-        else:
-            self.send_response(404)
-            self.end_headers()
+# Handler for Discount Selection
+async def handle_discount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-def run_health_check_server():
-    server = HTTPServer(('', 8080), HealthCheckHandler)
-    server.serve_forever()
+    _, discount, category = query.data.split("_")
+    await query.edit_message_text(
+        text=f"Fetching *{discount}% OFF* deals in *{category.title()}*...",
+        parse_mode="Markdown"
+    )
 
-# === MAIN ===
+    await fetch_and_post_deals(context, category, int(discount))
+
+# Register Handlers
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("setting", setting))
+app.add_handler(CallbackQueryHandler(handle_category_callback, pattern=r"^category_"))
+app.add_handler(CallbackQueryHandler(handle_discount_callback, pattern=r"^discount_"))
+
+# Schedule 24/7 deal posting
+job_queue.run_repeating(fetch_and_post_deals, interval=3600, first=10)
 
 if __name__ == "__main__":
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-
-    job_queue: JobQueue = app.job_queue
-    job_queue.run_repeating(post_deals, interval=3600, first=10)
-
-    # Start health check server in background
-    threading.Thread(target=run_health_check_server, daemon=True).start()
-
-    # Start the bot
+    start_health_check()
+    print("Bot is running...")
     app.run_polling()
