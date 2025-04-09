@@ -1,4 +1,3 @@
-
 name: Deploy to Koyeb
 
 on:
@@ -9,9 +8,14 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
       - name: Deploy to Koyeb
         uses: koyeb/koyeb-deploy-action@v1
         with:
-          token: \${{ secrets.KOYEB_TOKEN }}
+          token: ${{ secrets.KOYEB_API_TOKEN }}
+          app-name: psbotz-deal-bot
+          service-name: telegram-deal-bot
