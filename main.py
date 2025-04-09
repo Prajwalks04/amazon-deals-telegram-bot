@@ -2,7 +2,8 @@ import os
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from bot import post_deals, start_handler, help_handler
+from deal_fetcher import post_deals
+from bot import start_handler, help_handler
 from utils import is_admin_user
 from admin_commands import (
     settings_handler,
