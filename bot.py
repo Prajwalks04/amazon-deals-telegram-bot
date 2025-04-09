@@ -1,18 +1,24 @@
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from admin_commands import start_command, setting_command, status_command, category_callback, discount_callback, handle_message, show_buttons
-
-# Logging setup
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters
+)
+from admin_commands import (
+    start_command, setting_command, status_command,
+    category_callback, discount_callback, handle_message
 )
 
-# Initialize the bot app
+# Set up logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
 def run_bot(token: str):
     app = Application.builder().token(token).build()
 
-    # Command handlers
+    # Register command handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("setting", setting_command))
     app.add_handler(CommandHandler("status", status_command))
@@ -20,12 +26,12 @@ def run_bot(token: str):
     app.add_handler(CommandHandler("connects", setting_command))
     app.add_handler(CommandHandler("users", setting_command))
 
-    # Callback query handlers for button interactions
-    app.add_handler(CallbackQueryHandler(category_callback, pattern=r"^category_"))
-    app.add_handler(CallbackQueryHandler(discount_callback, pattern=r"^discount_"))
+    # Register callback handlers
+    app.add_handler(CallbackQueryHandler(category_callback, pattern="^category_"))
+    app.add_handler(CallbackQueryHandler(discount_callback, pattern="^discount_"))
 
-    # Handle other messages (fallbacks)
+    # Register a message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Start the bot with polling
+    # Start polling
     app.run_polling()
