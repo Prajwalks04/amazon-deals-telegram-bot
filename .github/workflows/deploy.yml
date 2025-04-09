@@ -8,11 +8,25 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Koyeb CLI
+        run: |
+          curl -sL https://app.koyeb.com/static/cli/koyeb-linux-amd64 -o koyeb
+          chmod +x koyeb
+          sudo mv koyeb /usr/local/bin/koyeb
 
       - name: Deploy to Koyeb
-        uses: koyeb/koyeb-deploy-github-action@v1
-        with:
-          service-name: amazon-deals-telegram-bot
-          token: ${{ secrets.KOYEB_API_TOKEN }}
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
+        run: |
+          koyeb app deploy \
+            --app amazon-deals-telegram-bot \
+            --service main \
+            --git github.com/${{ github.repository }} \
+            --branch main \
+            --build-command "pip install -r requirements.txt" \
+            --run-command "python main.py"
