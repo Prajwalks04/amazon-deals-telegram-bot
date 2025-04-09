@@ -13,20 +13,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Install Koyeb CLI
-        run: |
-          curl -sL https://app.koyeb.com/static/cli/koyeb-linux-amd64 -o koyeb
-          chmod +x koyeb
-          sudo mv koyeb /usr/local/bin/koyeb
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/amazon-deals-bot:latest
 
       - name: Deploy to Koyeb
-        env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
-        run: |
-          koyeb app deploy \
-            --app amazon-deals-telegram-bot \
-            --service main \
-            --git github.com/${{ github.repository }} \
-            --branch main \
-            --build-command "pip install -r requirements.txt" \
-            --run-command "python main.py"
+        uses: koyeb/koyeb-deploy-action@v1
+        with:
+          token: ${{ secrets.KOYEB_API_TOKEN }}
+          service: amazon-deals-bot
