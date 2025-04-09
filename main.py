@@ -1,75 +1,71 @@
 import os
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes, JobQueue
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from bot import post_deals, start_handler, help_handler
+from utils import is_admin_user
+from admin_commands import (
+    settings_handler,
+    status_handler,
+    channel_handler,
+    connects_handler,
+    users_handler,
+    category_buttons,
+    discount_buttons,
+    handle_callback_query
 )
-from utils import send_welcome_message, is_admin
-from deal_fetcher import fetch_and_post_deals
-from server import start_health_check
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_USER = os.getenv("ADMIN_USER")  # Telegram user ID of admin (as string)
 
 app = Application.builder().token(TELEGRAM_TOKEN).build()
-job_queue: JobQueue = app.job_queue
 
-# START Command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_welcome_message(update, context)
 
-# Admin command placeholder
-async def setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update, ADMIN_ID):
-        await update.message.reply_text("Access denied.")
-        return
-
+# /welcome command
+async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("Clothes", callback_data='category_clothes')],
-        [InlineKeyboardButton("Accessories", callback_data='category_accessories')],
-        [InlineKeyboardButton("Electronics", callback_data='category_electronics')],
+        [InlineKeyboardButton("Source - GitHub.com", url="https://github.com")],
+        [InlineKeyboardButton("Owner - @ps_botz", url="https://t.me/ps_botz")],
+        [InlineKeyboardButton("Database - mongodb.com", url="https://mongodb.com")],
+        [InlineKeyboardButton("Main Channel - @ps_botz", url="https://t.me/ps_botz")],
+        [InlineKeyboardButton("Explore Deals - @trendyofferz", url="https://t.me/trendyofferz")]
     ]
-    await update.message.reply_text("Choose a category:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Callback Handler for Categories & Discounts
-async def handle_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    if str(update.effective_user.id) == ADMIN_USER:
+        keyboard.append([InlineKeyboardButton("Admin Panel", callback_data="admin_panel")])
 
-    category = query.data.replace("category_", "")
-    keyboard = [
-        [InlineKeyboardButton("25% OFF", callback_data=f"discount_25_{category}")],
-        [InlineKeyboardButton("50% OFF", callback_data=f"discount_50_{category}")],
-    ]
-    await query.edit_message_text(
-        text=f"Selected Category: *{category.title()}*. Now pick a discount:",
+    welcome_text = (
+        "**Welcome to PSBOTz Deals Bot!**\n\n"
+        "Here you'll get *premium trending deals*, updated 24×7 directly in your inbox and channel.\n\n"
+        "_Bot fully maintained by ChatGPT, powered by OpenAI._\n"
+        "For more bots like this, join: @ps_botz"
+    )
+
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id,
+        photo="https://via.placeholder.com/700x400.png?text=PSBOTz+Deals",
+        caption=welcome_text,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# Handler for Discount Selection
-async def handle_discount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
 
-    _, discount, category = query.data.split("_")
-    await query.edit_message_text(
-        text=f"Fetching *{discount}% OFF* deals in *{category.title()}*...",
-        parse_mode="Markdown"
-    )
+# Register all handlers
+app.add_handler(CommandHandler("start", start_handler))
+app.add_handler(CommandHandler("help", help_handler))
+app.add_handler(CommandHandler("welcome", welcome))
+app.add_handler(CommandHandler("setting", settings_handler))
+app.add_handler(CommandHandler("status", status_handler))
+app.add_handler(CommandHandler("channel", channel_handler))
+app.add_handler(CommandHandler("connects", connects_handler))
+app.add_handler(CommandHandler("users", users_handler))
 
-    await fetch_and_post_deals(context, category, int(discount))
+app.add_handler(CallbackQueryHandler(handle_callback_query))
 
-# Register Handlers
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("setting", setting))
-app.add_handler(CallbackQueryHandler(handle_category_callback, pattern=r"^category_"))
-app.add_handler(CallbackQueryHandler(handle_discount_callback, pattern=r"^discount_"))
-
-# Schedule 24/7 deal posting
-job_queue.run_repeating(fetch_and_post_deals, interval=3600, first=10)
+# Run posting job
+job_queue = app.job_queue
+job_queue.run_repeating(post_deals, interval=3600, first=5)
 
 if __name__ == "__main__":
-    start_health_check()
-    print("Bot is running...")
+    print("Bot starting on Koyeb...")
     app.run_polling()
