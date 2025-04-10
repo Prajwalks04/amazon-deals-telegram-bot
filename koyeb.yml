@@ -1,23 +1,17 @@
-name: psbotz-deal-bot
+name: telegram-deal-bot
 
-services:
-  - name: telegram-deal-bot
-    dockerfile_path: ./Dockerfile
-    ports:
-      - internal: 8080
-        external: 8080
-    env:
-      - key: TELEGRAM_TOKEN
-        from_secret: TELEGRAM_TOKEN
-      - key: CHANNEL_ID
-        from_secret: CHANNEL_ID
-      - key: MONGODB_URI
-        from_secret: MONGODB_URI
-      - key: AWS_ACCESS_KEY_ID
-        from_secret: AWS_ACCESS_KEY_ID
-      - key: AWS_SECRET_ACCESS_KEY
-        from_secret: AWS_SECRET_ACCESS_KEY
-      - key: ASSOCIATE_TAG
-        from_secret: ASSOCIATE_TAG
-      - key: ADMIN_ID
-        from_secret: ADMIN_ID
+routes:
+  - path: /
+    port: 8080
+    protocol: http
+
+build:
+  type: docker
+
+env:
+  TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+  MONGO_URI: ${MONGO_URI}
+  AMAZON_ACCESS_KEY: ${AMAZON_ACCESS_KEY}
+  AMAZON_SECRET_KEY: ${AMAZON_SECRET_KEY}
+  AMAZON_ASSOCIATE_TAG: ${AMAZON_ASSOCIATE_TAG}
+  TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID}
