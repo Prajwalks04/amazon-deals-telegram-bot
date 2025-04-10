@@ -1,83 +1,68 @@
-import logging
+# main.py
+
 import os
+import asyncio
+from aiohttp import web
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ConversationHandler, ContextTypes,
-    filters
+    ApplicationBuilder, CommandHandler, ContextTypes,
+    MessageHandler, filters
 )
 from dotenv import load_dotenv
-
-from admin_commands import (
-    send_category_buttons, handle_category_selection,
-    handle_discount_selection, handle_custom_category_input,
-    CATEGORY_SELECTION, DISCOUNT_SELECTION, CUSTOM_CATEGORY
-)
+from utils import send_welcome_message, fetch_and_post_deals
+from admin_commands import register_admin_handlers
 
 load_dotenv()
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Example: https://your-koyeb-app.koyeb.app/webhook
+PORT = int(os.getenv("PORT", 8080))
 
-# Admin ID
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# Initialize bot app
+app = ApplicationBuilder().token(TOKEN).build()
 
-# --- Basic Bot Commands ---
-
+# Command handlers
+@app.command_handler("start")
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_text(
-        f"Welcome {user.first_name}!\nUse /help to see available commands."
-    )
+    await send_welcome_message(update, context)
 
+@app.command_handler("help")
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "/start - Welcome message\n"
-        "/help - List commands\n"
-        "/id - Show your Telegram ID\n"
-        "/channel - Show main channel"
-    )
+    await update.message.reply_text("This bot posts trending deals 24/7 from Amazon.\nUse /settings if you're an admin.")
 
-async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    await update.message.reply_text(f"Your Telegram ID: `{user_id}`", parse_mode='Markdown')
+# Add custom admin commands
+register_admin_handlers(app)
 
-async def channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Main channel: @ps_botz")
+# Default message handler
+@app.message_handler(filters.TEXT & ~filters.COMMAND)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Please use a command or wait for trending deals.")
 
-async def setting_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("This command is for admin only.")
-        return ConversationHandler.END
-    return await send_category_buttons(update, context)
+# Health check endpoint
+async def health_check(request):
+    return web.Response(text="Bot is healthy")
 
-# --- Main Function ---
+# Webhook handler
+async def handle_webhook(request):
+    data = await request.json()
+    update = Update.de_json(data, app.bot)
+    await app.update_queue.put(update)
+    return web.Response(text="OK")
 
-def main():
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    application = ApplicationBuilder().token(TOKEN).build()
+# Main runner
+async def main():
+    runner = web.AppRunner(web.Application())
+    runner.app.router.add_post("/webhook", handle_webhook)
+    runner.app.router.add_get("/", health_check)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
 
-    # Command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("id", id_command))
-    application.add_handler(CommandHandler("channel", channel_command))
+    # Set webhook URL
+    await app.bot.set_webhook(url=WEBHOOK_URL + "/webhook")
 
-    # Conversation handler for category/discount selection
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("setting", setting_command)],
-        states={
-            CATEGORY_SELECTION: [CallbackQueryHandler(handle_category_selection)],
-            CUSTOM_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_category_input)],
-            DISCOUNT_SELECTION: [CallbackQueryHandler(handle_discount_selection)],
-        },
-        fallbacks=[],
-    )
-    application.add_handler(conv_handler)
-
-    # Start bot
-    application.run_polling()
+    print("Bot is running with webhook...")
+    await app.run_polling(close_loop=False)  # Runs update queue manually
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
