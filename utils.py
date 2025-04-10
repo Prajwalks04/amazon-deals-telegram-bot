@@ -1,64 +1,58 @@
-import re
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime
+import requests
 
-def format_price(price):
-    return f"₹{price:,.0f}"
 
-def extract_price(text):
-    match = re.search(r'₹[\d,]+', text)
-    if match:
-        return int(match.group(0).replace('₹', '').replace(',', ''))
-    return None
+def format_price(price_str):
+    """Format price to ₹ symbol and commas."""
+    try:
+        price = float(price_str.replace("₹", "").replace(",", ""))
+        return f"₹{price:,.2f}"
+    except:
+        return price_str
 
-def is_trending_deal(title, discount):
-    trending_keywords = ['Hot Deal', 'Limited Offer', 'Best Price', 'Great Discount', 'Price Drop', '₹1 Deal']
-    return any(keyword.lower() in title.lower() for keyword in trending_keywords) or discount >= 50
 
-def build_caption(title, price, discount, coupon_code=None, card_offer=None, is_limited=False):
-    caption = f"<b>{title}</b>\n"
-    caption += f"Price: <b>{format_price(price)}</b>\n"
-    caption += f"Discount: <b>{discount}%</b>\n"
-    if is_limited:
-        caption += "⏳ <b>Limited Time Offer!</b>\n"
-    if coupon_code:
-        caption += f"Coupon Code: <code>{coupon_code}</code>\n"
-    if card_offer:
-        caption += f"Card Offer: {card_offer}\n"
-    caption += "#Deals #Offers"
-    return caption
+def is_valid_url(url):
+    """Check if a URL is reachable (status 200)."""
+    try:
+        response = requests.head(url, timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
-def get_category_buttons():
-    keyboard = [
-        [InlineKeyboardButton("👗 Clothes", callback_data='category_clothes')],
-        [InlineKeyboardButton("👜 Accessories", callback_data='category_accessories')],
-        [InlineKeyboardButton("📱 Electronics", callback_data='category_electronics')],
-        [InlineKeyboardButton("🏠 Home", callback_data='category_home')],
-        [InlineKeyboardButton("⬅️ Back", callback_data='admin_back')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
 
-def get_discount_buttons(category):
-    keyboard = [
-        [InlineKeyboardButton("25% Off", callback_data=f'{category}_25')],
-        [InlineKeyboardButton("50% Off", callback_data=f'{category}_50')],
-        [InlineKeyboardButton("70% Off", callback_data=f'{category}_70')],
-        [InlineKeyboardButton("Back", callback_data='select_category')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+def bold(text):
+    return f"*{text}*"
 
-def get_welcome_buttons():
-    keyboard = [
-        [
-            InlineKeyboardButton("📂 Source - GitHub.com", url="https://github.com"),
-            InlineKeyboardButton("👤 Owner - @ps_botz", url="https://t.me/ps_botz"),
-        ],
-        [
-            InlineKeyboardButton("🧠 Powered by OpenAI", url="https://openai.com"),
-            InlineKeyboardButton("🗃️ Database - mongodb.com", url="https://mongodb.com"),
-        ],
-        [
-            InlineKeyboardButton("🔥 Explore Deals - @trendyofferz", url="https://t.me/trendyofferz"),
-            InlineKeyboardButton("💥 More Bots - @ps_botz", url="https://t.me/ps_botz")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+
+def monospace(text):
+    return f"`{text}`"
+
+
+def generate_deal_caption(deal):
+    """Generates a caption with styling and alerts for a deal."""
+    title = bold(deal['title'])
+    price = format_price(deal['price'])
+    original_price = format_price(deal.get('original_price', ''))
+    coupon = f"\nCoupon: {monospace(deal['coupon'])}" if deal.get('coupon') else ""
+    credit_card = f"\nCard Offer: {deal['card_offer']}" if deal.get('card_offer') else ""
+    offer_tag = ""
+
+    if "₹1" in price or "1.00" in price:
+        offer_tag = "\n‼️ *Buy Now ₹1 Deal!*"
+    elif deal.get('limited_offer'):
+        offer_tag = "\n⏰ *Limited Time Offer!*"
+    elif deal.get('price_drop'):
+        offer_tag = "\n⬇️ *Price Dropped!*"
+
+    caption = f"{title}\nPrice: {price}\nOriginal: {original_price}{coupon}{credit_card}{offer_tag}"
+    return caption.strip()
+
+
+def get_current_time():
+    """Returns current time formatted."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def clean_text(text):
+    """Remove extra spaces and unwanted characters."""
+    return text.replace('\n', ' ').replace('\r', '').strip()
