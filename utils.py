@@ -1,9 +1,9 @@
 from datetime import datetime
 import requests
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def format_price(price_str):
-    """Format price to ₹ symbol and commas."""
     try:
         price = float(price_str.replace("₹", "").replace(",", ""))
         return f"₹{price:,.2f}"
@@ -12,7 +12,6 @@ def format_price(price_str):
 
 
 def is_valid_url(url):
-    """Check if a URL is reachable (status 200)."""
     try:
         response = requests.head(url, timeout=5)
         return response.status_code == 200
@@ -29,7 +28,6 @@ def monospace(text):
 
 
 def generate_deal_caption(deal):
-    """Generates a caption with styling and alerts for a deal."""
     title = bold(deal['title'])
     price = format_price(deal['price'])
     original_price = format_price(deal.get('original_price', ''))
@@ -48,11 +46,54 @@ def generate_deal_caption(deal):
     return caption.strip()
 
 
+def generate_deal_buttons(deal):
+    buttons = [
+        [InlineKeyboardButton("Buy Now", url=deal['url'])],
+    ]
+
+    if deal.get('source'):
+        buttons.append([
+            InlineKeyboardButton("Source", url=deal['source'])
+        ])
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def get_welcome_buttons():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Source - GitHub", url="https://github.com/Prajwalks04"),
+            InlineKeyboardButton("Owner - @PSBOTz", url="https://t.me/PSBOTz"),
+        ],
+        [
+            InlineKeyboardButton("Database - MongoDB", url="https://mongodb.com"),
+            InlineKeyboardButton("Main Channel - @ps_botz", url="https://t.me/ps_botz"),
+        ],
+        [
+            InlineKeyboardButton("Explore More Deals", url="https://t.me/trendyofferz")
+        ]
+    ])
+
+
+def get_admin_buttons():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Post Controls", callback_data="admin_post_controls"),
+            InlineKeyboardButton("Scheduling", callback_data="admin_scheduling"),
+        ],
+        [
+            InlineKeyboardButton("Accepted Channels", callback_data="admin_channels"),
+            InlineKeyboardButton("User Access", callback_data="admin_users"),
+        ],
+        [
+            InlineKeyboardButton("24/7 Toggle", callback_data="admin_247toggle")
+        ]
+    ])
+
+
 def get_current_time():
-    """Returns current time formatted."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def clean_text(text):
-    """Remove extra spaces and unwanted characters."""
     return text.replace('\n', ' ').replace('\r', '').strip()
