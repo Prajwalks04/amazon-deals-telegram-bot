@@ -1,52 +1,68 @@
-# admin_commands.py
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    CallbackContext,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ConversationHandler
+)
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CallbackQueryHandler, CommandHandler
-from utils import is_admin, CATEGORY_OPTIONS, DISCOUNT_OPTIONS, set_admin_filter
+# States for ConversationHandler
+CATEGORY_SELECTION, DISCOUNT_SELECTION, CUSTOM_CATEGORY = range(3)
 
-admin_filters = {}
+# Predefined categories
+categories = ["Clothes", "Accessories", "Electronics", "Home", "Kitchen", "Kids"]
 
-async def setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("You are not authorized to access this command.")
+def send_category_buttons(update: Update, context: CallbackContext) -> int:
+    keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in categories]
+    keyboard.append([InlineKeyboardButton("Search", callback_data="search_custom")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    keyboard = [[InlineKeyboardButton(cat, callback_data=f"category_{cat}")]
-                for cat in CATEGORY_OPTIONS]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Choose a product category:", reply_markup=reply_markup)
+    update.message.reply_text("Select a category or tap 'Search' to type your own:", reply_markup=reply_markup)
+    return CATEGORY_SELECTION
 
-async def handle_category_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_category_selection(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
-    await query.answer()
-    category = query.data.split("_", 1)[1]
-    user_id = query.from_user.id
-    admin_filters[user_id] = {"category": category}
+    query.answer()
+    selected = query.data
 
-    keyboard = [[InlineKeyboardButton(discount, callback_data=f"discount_{discount}")]
-                for discount in DISCOUNT_OPTIONS]
+    if selected == "search_custom":
+        query.edit_message_text("Type the category or keyword you want to search:")
+        return CUSTOM_CATEGORY
+
+    context.user_data['category'] = selected
+    return ask_discount(query, context)
+
+def handle_custom_category_input(update: Update, context: CallbackContext) -> int:
+    category = update.message.text.strip()
+    context.user_data['category'] = category
+    return ask_discount(update, context)
+
+def ask_discount(updateable, context: CallbackContext) -> int:
+    keyboard = [
+        [InlineKeyboardButton("25%+", callback_data="25")],
+        [InlineKeyboardButton("50%+", callback_data="50")],
+        [InlineKeyboardButton("75%+", callback_data="75")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
-        text=f"Selected category: *{category}*\nNow choose a minimum discount:",
-        parse_mode="Markdown",
-        reply_markup=reply_markup
-    )
 
-async def handle_discount_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = f"Selected Category: *{context.user_data['category']}*\nNow, select discount filter:"
+    
+    if hasattr(updateable, 'edit_message_text'):
+        updateable.edit_message_text(msg, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        updateable.message.reply_text(msg, reply_markup=reply_markup, parse_mode='Markdown')
+
+    return DISCOUNT_SELECTION
+
+def handle_discount_selection(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
-    await query.answer()
-    discount = query.data.split("_", 1)[1]
-    user_id = query.from_user.id
+    query.answer()
+    discount = query.data
 
-    if user_id in admin_filters:
-        admin_filters[user_id]["discount"] = discount
-        set_admin_filter(user_id, admin_filters[user_id])  # Save to global or DB
-        await query.edit_message_text(
-            text=f"✅ Filter set:\n*Category:* {admin_filters[user_id]['category']}\n"
-                 f"*Minimum Discount:* {discount}",
-            parse_mode="Markdown"
-        )
+    category = context.user_data.get('category', 'Unknown')
+    # You can now process this category and discount filter for deal fetching
+    query.edit_message_text(f"Category: *{category}*\nDiscount Filter: *{discount}%+*", parse_mode='Markdown')
 
-def register_admin_handlers(app):
-    app.add_handler(CommandHandler("setting", setting))
-    app.add_handler(CallbackQueryHandler(handle_category_selection, pattern="^category_"))
-    app.add_handler(CallbackQueryHandler(handle_discount_selection, pattern="^discount_"))
+    # TODO: Trigger deal filtering based on selected category & discount
+    return ConversationHandler.END
